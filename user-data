@@ -1,43 +1,40 @@
 #cloud-config
-#source: https://www.jimangel.io/posts/automate-ubuntu-22-04-lts-bare-metal/
 autoinstall:
   version: 1
 
-  ssh:
-    install-server: true
-    # option "allow-pw" defaults to `true` if authorized_keys is empty, `false` otherwise.
-    allow-pw: false
+  early-commands:
+    - systemctl stop ssh # otherwise packer tries to connect and exceed max attempts
+    - hostnamectl set-hostname ubuntu-00 # update hostname even for the installer environment
+    - dhclient # re-register the updated hostname
 
-  # "[late-commands] are run in the installer environment with the installed system mounted at /target."
-  late-commands:
-    # randomly generate the hostname & show the IP at boot
-    - echo ubuntu-host-$(openssl rand -hex 3) > /target/etc/hostname
-    # dump the IP out at login screen
-    #- echo "Ubuntu 22.04 LTS \nIP - $(hostname -I)\n" > /target/etc/issue
-    # storage was a pain in the ass and merged multiple things, I just want a 100% use of the fs. (alt option: https://gist.github.com/anedward01/b68e00bb2dcfa4f1335cd4590cbc8484#file-user-data-L97-L199)
-    - curtin in-target --target=/target -- lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
-    - curtin in-target --target=/target -- resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
-    # shut-down the host to avoid an infinite installer loop
-    - shutdown -h now
+  network:
+    version: 2
+    ethernets:
+      eth0:
+        dhcp4: yes
+
+  ssh:
+    install-server: yes
+
+  identity:
+    hostname: ubuntu-00 # hostname of the system
+    password: $6$jCfWFbdxh1lK09sY$pxFnrW/yXewYFmgoaywu3WKhdPQg0e8DR8jvedAV.udXM0.i5M6wr4Up2S7ZCN9kNDmg.s7fmrOaXE6nEyzPb/ # Welcome123
+    username: kuber # root doesn't work
+
+  storage:
+    layout:
+      name: lvm
+
+  packages:
+    #- open-vm-tools # for vmware hypervisor
+    #- git
+    - bashtop
 
   user-data:
     disable_root: true
-    timezone: Europe/Warsaw
-    package_upgrade: false
-    users:
-      - name: kuber
-        primary_group: users
-        groups: sudo
-        lock_passwd: true
-        # don't need PW since using SSH, leaving this in though...
-        # password is "changeme" - created with `docker run -it --rm alpine mkpasswd --method=SHA-512`
-        # passwd: "$5$IWwNqL9VUSDoc4Jv$DEUGR.cZQcbz/QvdCOmU13fX5ZW0rANg8LqkAtX3nBA"
-        shell: /bin/bash
-        # use cat ~/.ssh/id_rsa.pub or generate to get your public key
-        ssh_authorized_keys:
-          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPSrxkNql9pmBj5xO17OHCwXgW3IUlP0yya53T6m75qh cazacubogdan@github/76024717 # ssh-import-id gh:cazacubogdan"
-          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICPo6uYfx8LcBk3bsswYaF6cGj9KF/LvmS5FLmRECQQ7 cazacubogdan@github/83936177 # ssh-import-id gh:cazacubogdan"
-        sudo: ALL=(ALL) NOPASSWD:ALL
-    # shutdown after first host initial provisioning
-    power_state:
-      mode: poweroff
+
+  late-commands:
+    - echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/sysuser # allow sudo without password
+    - sed -ie 's/GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="net.ifnames=0 biosdevname=0"/' /target/etc/default/grub
+    - curtin in-target --target /target update-grub2
+    - wget -O - https://github.com/cazacubogdan.keys | sudo tee -a /home/kuber/.ssh/authorized_keys
