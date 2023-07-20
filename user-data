@@ -11,7 +11,7 @@ autoinstall:
   # "[late-commands] are run in the installer environment with the installed system mounted at /target."
   late-commands:
     # randomly generate the hostname & show the IP at boot
-    #- echo ubuntu-host-$(openssl rand -hex 3) > /target/etc/hostname
+    - echo ubuntu-host-$(openssl rand -hex 3) > /target/etc/hostname
     # dump the IP out at login screen
     #- echo "Ubuntu 22.04 LTS \nIP - $(hostname -I)\n" > /target/etc/issue
     # storage was a pain in the ass and merged multiple things, I just want a 100% use of the fs. (alt option: https://gist.github.com/anedward01/b68e00bb2dcfa4f1335cd4590cbc8484#file-user-data-L97-L199)
